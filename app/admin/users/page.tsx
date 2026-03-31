@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import Pagination from "../components/Pagination";
+
+const PAGE_SIZE = 50;
 
 function formatDate(iso: string | null) {
 	if (!iso) return "—";
@@ -9,23 +12,37 @@ function formatDate(iso: string | null) {
 	});
 }
 
-export default async function UsersPage() {
+export default async function UsersPage({
+	searchParams,
+}: {
+	searchParams: Promise<{ page?: string }>;
+}) {
+	const { page: pageParam } = await searchParams;
+	const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+	const from = (page - 1) * PAGE_SIZE;
+	const to = from + PAGE_SIZE - 1;
+
 	const supabase = await createClient();
 
 	const { data: profiles, count, error } = await supabase
 		.from("profiles")
 		.select("*", { count: "exact" })
 		.order("created_datetime_utc", { ascending: false })
-		.limit(10000);
+		.range(from, to);
 
-	const { data: voteCounts } = await supabase
-		.from("caption_votes")
-		.select("profile_id");
-
+	const profileIds = (profiles ?? []).map((p) => p.id);
 	const voteMap: Record<string, number> = {};
-	(voteCounts ?? []).forEach((v) => {
-		voteMap[v.profile_id] = (voteMap[v.profile_id] ?? 0) + 1;
-	});
+	if (profileIds.length > 0) {
+		const { data: voteCounts } = await supabase
+			.from("caption_votes")
+			.select("profile_id")
+			.in("profile_id", profileIds);
+		(voteCounts ?? []).forEach((v) => {
+			voteMap[v.profile_id] = (voteMap[v.profile_id] ?? 0) + 1;
+		});
+	}
+
+	const total = count ?? 0;
 
 	return (
 		<div style={{ maxWidth: "1000px" }}>
@@ -40,7 +57,7 @@ export default async function UsersPage() {
 					Users
 				</h1>
 				<span style={{ fontSize: "0.8rem", color: "#5a5a7a" }}>
-					{count ?? 0} total · read-only
+					{total} total · read-only
 				</span>
 			</div>
 
@@ -66,7 +83,6 @@ export default async function UsersPage() {
 					borderRadius: "12px",
 					overflow: "hidden",
 				}}>
-				{/* Header */}
 				<div
 					style={{
 						display: "grid",
@@ -90,12 +106,7 @@ export default async function UsersPage() {
 				</div>
 
 				{!profiles || profiles.length === 0 ? (
-					<p
-						style={{
-							color: "#5a5a7a",
-							padding: "1.5rem 1.25rem",
-							fontSize: "0.85rem",
-						}}>
+					<p style={{ color: "#5a5a7a", padding: "1.5rem 1.25rem", fontSize: "0.85rem" }}>
 						No profiles found.
 					</p>
 				) : (
@@ -108,13 +119,12 @@ export default async function UsersPage() {
 							first && last
 								? `${first} ${last}`
 								: first ?? last ?? (
-										<span style={{ color: "#3a3a5a", fontStyle: "italic" }}>
-											No name
-										</span>
+										<span style={{ color: "#3a3a5a", fontStyle: "italic" }}>No name</span>
 								  );
 						const email = row.email ?? row.id;
 						const isSuperadmin = !!row.is_superadmin;
 						const votes = voteMap[row.id] ?? 0;
+						const rowNum = from + i + 1;
 
 						return (
 							<div
@@ -124,14 +134,11 @@ export default async function UsersPage() {
 									gridTemplateColumns: "40px 1fr 1fr 80px 90px 80px",
 									gap: "1rem",
 									padding: "0.75rem 1.25rem",
-									borderBottom:
-										i < profiles.length - 1 ? "1px solid #1e1e3a" : "none",
+									borderBottom: i < profiles.length - 1 ? "1px solid #1e1e3a" : "none",
 									alignItems: "center",
 									fontSize: "0.83rem",
 								}}>
-								<span style={{ color: "#3a3a5a", fontSize: "0.75rem" }}>
-									{i + 1}
-								</span>
+								<span style={{ color: "#3a3a5a", fontSize: "0.75rem" }}>{rowNum}</span>
 
 								<span
 									style={{
@@ -154,11 +161,7 @@ export default async function UsersPage() {
 									{email}
 								</span>
 
-								<span
-									style={{
-										color: votes > 0 ? "#a78bfa" : "#3a3a5a",
-										fontWeight: votes > 0 ? 600 : 400,
-									}}>
+								<span style={{ color: votes > 0 ? "#a78bfa" : "#3a3a5a", fontWeight: votes > 0 ? 600 : 400 }}>
 									{votes}
 								</span>
 
@@ -189,6 +192,8 @@ export default async function UsersPage() {
 					})
 				)}
 			</div>
+
+			<Pagination page={page} total={total} pageSize={PAGE_SIZE} basePath="/admin/users" />
 		</div>
 	);
 }

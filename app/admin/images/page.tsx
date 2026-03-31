@@ -1,23 +1,41 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import ImagesClient from "./ImagesClient";
+import Pagination from "../components/Pagination";
 
-export default async function ImagesPage() {
+const PAGE_SIZE = 50;
+
+export default async function ImagesPage({
+	searchParams,
+}: {
+	searchParams: Promise<{ page?: string }>;
+}) {
+	const { page: pageParam } = await searchParams;
+	const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+	const from = (page - 1) * PAGE_SIZE;
+	const to = from + PAGE_SIZE - 1;
+
 	const supabase = await createClient();
 
-	const { data: images, error } = await supabase
+	const { data: images, error, count } = await supabase
 		.from("images")
-		.select("id, url, image_description, is_public, created_datetime_utc")
-		.order("created_datetime_utc", { ascending: false });
+		.select("id, url, image_description, is_public, created_datetime_utc", { count: "exact" })
+		.order("created_datetime_utc", { ascending: false })
+		.range(from, to);
 
-	const { data: captionRows } = await supabase
-		.from("captions")
-		.select("image_id");
-
+	const imageIds = (images ?? []).map((i) => i.id);
 	const captionCountMap: Record<string, number> = {};
-	(captionRows ?? []).forEach((c) => {
-		captionCountMap[c.image_id] = (captionCountMap[c.image_id] ?? 0) + 1;
-	});
+	if (imageIds.length > 0) {
+		const { data: captionRows } = await supabase
+			.from("captions")
+			.select("image_id")
+			.in("image_id", imageIds);
+		(captionRows ?? []).forEach((c) => {
+			captionCountMap[c.image_id] = (captionCountMap[c.image_id] ?? 0) + 1;
+		});
+	}
+
+	const total = count ?? 0;
 
 	return (
 		<div style={{ maxWidth: "1000px" }}>
@@ -34,9 +52,7 @@ export default async function ImagesPage() {
 					<h1 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#f0f0ff" }}>
 						Images
 					</h1>
-					<span style={{ fontSize: "0.8rem", color: "#5a5a7a" }}>
-						{images?.length ?? 0} total
-					</span>
+					<span style={{ fontSize: "0.8rem", color: "#5a5a7a" }}>{total} total</span>
 				</div>
 				<Link
 					href="/admin/images/new"
@@ -69,6 +85,7 @@ export default async function ImagesPage() {
 			)}
 
 			<ImagesClient images={images ?? []} captionCountMap={captionCountMap} />
+			<Pagination page={page} total={total} pageSize={PAGE_SIZE} basePath="/admin/images" />
 		</div>
 	);
 }

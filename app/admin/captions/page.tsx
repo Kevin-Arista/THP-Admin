@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import Pagination from "../components/Pagination";
+
+const PAGE_SIZE = 50;
 
 function formatDate(iso: string | null) {
 	if (!iso) return "—";
@@ -9,27 +12,43 @@ function formatDate(iso: string | null) {
 	});
 }
 
-export default async function CaptionsPage() {
+export default async function CaptionsPage({
+	searchParams,
+}: {
+	searchParams: Promise<{ page?: string }>;
+}) {
+	const { page: pageParam } = await searchParams;
+	const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+	const from = (page - 1) * PAGE_SIZE;
+	const to = from + PAGE_SIZE - 1;
+
 	const supabase = await createClient();
 
-	const { data: captions, error } = await supabase
+	const { data: captions, error, count } = await supabase
 		.from("captions")
 		.select(
 			`id, content, created_datetime_utc, like_count, image_id,
 			images (id, url, image_description)`,
+			{ count: "exact" },
 		)
-		.order("created_datetime_utc", { ascending: false });
+		.order("created_datetime_utc", { ascending: false })
+		.range(from, to);
 
-	const { data: allVotes } = await supabase
-		.from("caption_votes")
-		.select("caption_id, vote_value");
-
+	const captionIds = (captions ?? []).map((c) => c.id);
 	const upMap: Record<string, number> = {};
 	const downMap: Record<string, number> = {};
-	(allVotes ?? []).forEach((v) => {
-		if (v.vote_value > 0) upMap[v.caption_id] = (upMap[v.caption_id] ?? 0) + 1;
-		else downMap[v.caption_id] = (downMap[v.caption_id] ?? 0) + 1;
-	});
+	if (captionIds.length > 0) {
+		const { data: votes } = await supabase
+			.from("caption_votes")
+			.select("caption_id, vote_value")
+			.in("caption_id", captionIds);
+		(votes ?? []).forEach((v) => {
+			if (v.vote_value > 0) upMap[v.caption_id] = (upMap[v.caption_id] ?? 0) + 1;
+			else downMap[v.caption_id] = (downMap[v.caption_id] ?? 0) + 1;
+		});
+	}
+
+	const total = count ?? 0;
 
 	return (
 		<div style={{ maxWidth: "1100px" }}>
@@ -44,7 +63,7 @@ export default async function CaptionsPage() {
 					Captions
 				</h1>
 				<span style={{ fontSize: "0.8rem", color: "#5a5a7a" }}>
-					{captions?.length ?? 0} total · read-only
+					{total} total · read-only
 				</span>
 			</div>
 
@@ -70,7 +89,6 @@ export default async function CaptionsPage() {
 					borderRadius: "12px",
 					overflow: "hidden",
 				}}>
-				{/* Header */}
 				<div
 					style={{
 						display: "grid",
@@ -93,12 +111,7 @@ export default async function CaptionsPage() {
 				</div>
 
 				{!captions || captions.length === 0 ? (
-					<p
-						style={{
-							color: "#5a5a7a",
-							padding: "1.5rem 1.25rem",
-							fontSize: "0.85rem",
-						}}>
+					<p style={{ color: "#5a5a7a", padding: "1.5rem 1.25rem", fontSize: "0.85rem" }}>
 						No captions found.
 					</p>
 				) : (
@@ -119,12 +132,10 @@ export default async function CaptionsPage() {
 									gridTemplateColumns: "48px 1fr 120px 110px 100px",
 									gap: "1rem",
 									padding: "0.75rem 1.25rem",
-									borderBottom:
-										i < captions.length - 1 ? "1px solid #1e1e3a" : "none",
+									borderBottom: i < captions.length - 1 ? "1px solid #1e1e3a" : "none",
 									alignItems: "center",
 									fontSize: "0.83rem",
 								}}>
-								{/* Thumbnail */}
 								<div
 									style={{
 										width: "48px",
@@ -144,12 +155,10 @@ export default async function CaptionsPage() {
 									)}
 								</div>
 
-								{/* Caption text */}
 								<span style={{ color: "#e0e0f0", lineHeight: 1.4, fontSize: "0.82rem" }}>
 									{c.content ?? <span style={{ color: "#3a3a5a" }}>—</span>}
 								</span>
 
-								{/* Image description */}
 								<span
 									style={{
 										color: "#5a5a7a",
@@ -161,23 +170,19 @@ export default async function CaptionsPage() {
 									{img?.image_description ?? "—"}
 								</span>
 
-								{/* Votes */}
 								<span style={{ fontSize: "0.8rem" }}>
 									<span style={{ color: "#4ecdc4" }}>+{up}</span>
 									<span style={{ color: "#3a3a5a", margin: "0 3px" }}>/</span>
 									<span style={{ color: "#ff6b6b" }}>-{down}</span>{" "}
 									<span
 										style={{
-											color:
-												net > 0 ? "#4ecdc4" : net < 0 ? "#ff6b6b" : "#5a5a7a",
+											color: net > 0 ? "#4ecdc4" : net < 0 ? "#ff6b6b" : "#5a5a7a",
 											fontSize: "0.72rem",
 										}}>
-										({net > 0 ? "+" : ""}
-										{net})
+										({net > 0 ? "+" : ""}{net})
 									</span>
 								</span>
 
-								{/* Date */}
 								<span style={{ color: "#5a5a7a", fontSize: "0.78rem" }}>
 									{formatDate(c.created_datetime_utc ?? null)}
 								</span>
@@ -186,6 +191,8 @@ export default async function CaptionsPage() {
 					})
 				)}
 			</div>
+
+			<Pagination page={page} total={total} pageSize={PAGE_SIZE} basePath="/admin/captions" />
 		</div>
 	);
 }

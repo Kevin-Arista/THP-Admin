@@ -34,26 +34,64 @@ const inputStyle: React.CSSProperties = {
 
 export default function NewImagePage() {
 	const router = useRouter();
+	const [mode, setMode] = useState<"url" | "upload">("url");
 	const [url, setUrl] = useState("");
+	const [file, setFile] = useState<File | null>(null);
+	const [filePreview, setFilePreview] = useState<string | null>(null);
 	const [description, setDescription] = useState("");
 	const [isPublic, setIsPublic] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+		const f = e.target.files?.[0] ?? null;
+		setFile(f);
+		if (f) {
+			const reader = new FileReader();
+			reader.onload = (ev) => setFilePreview(ev.target?.result as string);
+			reader.readAsDataURL(f);
+		} else {
+			setFilePreview(null);
+		}
+	}
+
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
-		if (!url.trim()) {
-			setError("URL is required.");
-			return;
-		}
 		setSaving(true);
 		setError(null);
+
+		let finalUrl = url.trim();
+
+		if (mode === "upload") {
+			if (!file) {
+				setError("Please select a file to upload.");
+				setSaving(false);
+				return;
+			}
+			const fd = new FormData();
+			fd.append("file", file);
+			const uploadRes = await fetch("/api/admin/images/upload", { method: "POST", body: fd });
+			if (!uploadRes.ok) {
+				const body = await uploadRes.json().catch(() => ({}));
+				setError(body.error ?? "Upload failed.");
+				setSaving(false);
+				return;
+			}
+			const { url: uploadedUrl } = await uploadRes.json();
+			finalUrl = uploadedUrl;
+		}
+
+		if (!finalUrl) {
+			setError("URL is required.");
+			setSaving(false);
+			return;
+		}
 
 		const res = await fetch("/api/admin/images", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				url: url.trim(),
+				url: finalUrl,
 				image_description: description.trim() || null,
 				is_public: isPublic,
 			}),
@@ -69,6 +107,8 @@ export default function NewImagePage() {
 		router.push("/admin/images");
 		router.refresh();
 	}
+
+	const previewSrc = mode === "upload" ? filePreview : url;
 
 	return (
 		<div style={{ maxWidth: "560px" }}>
@@ -113,18 +153,53 @@ export default function NewImagePage() {
 					</div>
 				)}
 
-				<FormField label="Image URL *">
-					<input
-						type="url"
-						value={url}
-						onChange={(e) => setUrl(e.target.value)}
-						placeholder="https://example.com/image.jpg"
-						required
-						style={inputStyle}
-					/>
-				</FormField>
+				{/* Mode toggle */}
+				<div style={{ display: "flex", gap: "0.5rem" }}>
+					{(["url", "upload"] as const).map((m) => (
+						<button
+							key={m}
+							type="button"
+							onClick={() => setMode(m)}
+							style={{
+								padding: "0.4rem 0.9rem",
+								fontSize: "0.8rem",
+								fontWeight: 600,
+								color: mode === m ? "#0d0d1a" : "#8888aa",
+								background: mode === m ? "#4ecdc4" : "transparent",
+								border: `1px solid ${mode === m ? "#4ecdc4" : "#2a2a4a"}`,
+								borderRadius: "6px",
+								cursor: "pointer",
+							}}>
+							{m === "url" ? "URL" : "Upload File"}
+						</button>
+					))}
+				</div>
 
-				{url && (
+				{mode === "url" ? (
+					<FormField label="Image URL *">
+						<input
+							type="url"
+							value={url ?? ""}
+							onChange={(e) => setUrl(e.target.value)}
+							placeholder="https://example.com/image.jpg"
+							required
+							disabled={saving}
+							style={inputStyle}
+						/>
+					</FormField>
+				) : (
+					<FormField label="Image File *">
+						<input
+							type="file"
+							accept="image/*"
+							onChange={handleFileChange}
+							disabled={saving}
+							style={{ ...inputStyle, padding: "0.4rem 0.75rem", cursor: "pointer" }}
+						/>
+					</FormField>
+				)}
+
+				{previewSrc && (
 					<div
 						style={{
 							borderRadius: "8px",
@@ -134,7 +209,7 @@ export default function NewImagePage() {
 						}}>
 						{/* eslint-disable-next-line @next/next/no-img-element */}
 						<img
-							src={url}
+							src={previewSrc}
 							alt="Preview"
 							style={{
 								width: "100%",
@@ -197,7 +272,7 @@ export default function NewImagePage() {
 							cursor: saving ? "default" : "pointer",
 							transition: "background 0.2s",
 						}}>
-						{saving ? "Creating…" : "Create Image"}
+						{saving ? (mode === "upload" ? "Uploading…" : "Creating…") : "Create Image"}
 					</button>
 					<Link
 						href="/admin/images"
