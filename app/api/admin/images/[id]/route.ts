@@ -42,6 +42,7 @@ export async function PUT(
 			url: body.url,
 			image_description: body.image_description ?? null,
 			is_public: body.is_public ?? false,
+			modified_by_user_id: user.id,
 		})
 		.eq("id", id)
 		.select()

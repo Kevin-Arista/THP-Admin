@@ -113,7 +113,7 @@ async function main() {
 
 	const { error: updateErr } = await admin
 		.from("profiles")
-		.update({ is_superadmin: true })
+		.update({ is_superadmin: true, modified_by_user_id: profileId })
 		.eq("id", profileId!);
 
 	if (updateErr) {

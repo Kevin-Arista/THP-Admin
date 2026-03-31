@@ -38,6 +38,8 @@ export async function POST(request: Request) {
 			url: body.url,
 			image_description: body.image_description ?? null,
 			is_public: body.is_public ?? false,
+			created_by_user_id: user.id,
+			modified_by_user_id: user.id,
 		})
 		.select()
 		.single();
