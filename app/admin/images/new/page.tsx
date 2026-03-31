@@ -77,8 +77,28 @@ export default function NewImagePage() {
 				setSaving(false);
 				return;
 			}
-			const { url: uploadedUrl } = await uploadRes.json();
+			const { url: uploadedUrl, imageId } = await uploadRes.json();
 			finalUrl = uploadedUrl;
+
+			// Pipeline already created the image record — update it with description/visibility
+			const res = await fetch(`/api/admin/images/${imageId}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					url: finalUrl,
+					image_description: description.trim() || null,
+					is_public: isPublic,
+				}),
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				setError(body.error ?? "Failed to save image.");
+				setSaving(false);
+				return;
+			}
+			router.push("/admin/images");
+			router.refresh();
+			return;
 		}
 
 		if (!finalUrl) {

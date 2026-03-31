@@ -73,6 +73,7 @@ export async function POST(request: Request) {
 			{ status: registerRes.status },
 		);
 	}
+	const { imageId } = await registerRes.json();
 
-	return NextResponse.json({ url: cdnUrl }, { status: 201 });
+	return NextResponse.json({ url: cdnUrl, imageId }, { status: 201 });
 }
