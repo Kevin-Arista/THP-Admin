@@ -20,6 +20,7 @@ const NAV_GROUPS: NavGroup[] = [
 		items: [
 			{ href: "/admin/images", label: "Images", icon: "◧" },
 			{ href: "/admin/captions", label: "Captions", icon: "◫" },
+			{ href: "/admin/caption-stats", label: "Caption Stats", icon: "◨" },
 			{ href: "/admin/caption-examples", label: "Caption Examples", icon: "◪" },
 			{ href: "/admin/caption-requests", label: "Caption Requests", icon: "◩" },
 			{ href: "/admin/terms", label: "Terms", icon: "◬" },
